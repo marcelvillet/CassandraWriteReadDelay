@@ -12,7 +12,10 @@ namespace CassandraWriteReadDelay
     {
         #region Fields and Properties
 
-        static int NO_TABLES = 4;
+        const int NO_TABLES = 5;
+        const int TOTAL_NO_TASKS = 100000;
+        const int TOTAL_NO_THREADS = 20;
+
         static Random Random = new Random(123);
         static ISession Session { get; set; }
         static PreparedStatement[] _psInsert = null;
@@ -27,6 +30,7 @@ namespace CassandraWriteReadDelay
                     for (int i = 0; i < NO_TABLES; i++)
                     {
                         _psInsert[i] = Session.Prepare($"INSERT INTO test{i} (id0, id1, id2, id3, id4, id5, id6, id7, id8, id9, name, csharpDate, cqlDate, tuuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, toUnixTimestamp(now()), now())");
+                        _psInsert[i].SetConsistencyLevel(ConsistencyLevel.LocalQuorum);
                     }
                 }
 
@@ -45,13 +49,14 @@ namespace CassandraWriteReadDelay
                     for (int i = 0; i < NO_TABLES; i++)
                     {
                         _psSelect[i] = Session.Prepare($"SELECT * FROM test{i} WHERE id{i} = ?");
+                        _psSelect[i].SetConsistencyLevel(ConsistencyLevel.LocalQuorum);
                     }
                 }
 
                 return _psSelect;
             }
         }
-        static int TotalNoTasks = 10000;
+        
         static int NoTasksExecuted = 0;
 
         #endregion
@@ -155,7 +160,7 @@ CREATE TABLE test" + i + @" (
 
                 while(!exit)
                 {
-                    var currPct = (int)(100.0 * NoTasksExecuted / TotalNoTasks);
+                    var currPct = (int)(100.0 * NoTasksExecuted / TOTAL_NO_TASKS);
 
                     if (currPct > nextPct)
                     {
@@ -170,14 +175,16 @@ CREATE TABLE test" + i + @" (
             thread.IsBackground = true;
             thread.Start();
 
-            //RunThreads(1, 100);
-            RunTasks(0, TotalNoTasks);
+            Stopwatch sw = Stopwatch.StartNew();
+            RunThreads(TOTAL_NO_THREADS, TOTAL_NO_TASKS);
+            sw.Stop();
+            //RunTasks(0, TotalNoTasks);
 
             exit = true;
             thread.Join();
 
             WriteLine("Done");
-
+            WriteLine($"{TOTAL_NO_TASKS} tasks executed in {sw.Elapsed} using {TOTAL_NO_THREADS} threads");
             WriteLine("Press ENTER to exit");
             Console.ReadLine();
         }
@@ -226,13 +233,11 @@ CREATE TABLE test" + i + @" (
 
         private static void RunTasks(int indexStart, int noTasks)
         {
-            var tasks = new Task[noTasks];
             for (int i = 0; i < noTasks; i++)
             {
-                int index = i;
-                tasks[i] = PerformIO(index);
+                int index = indexStart + i;
+                PerformIO(index).Wait();
             }
-            Task.WaitAll(tasks);
         }
 
         private static void RunThreads(int noThreads, int noTasks)
@@ -243,7 +248,7 @@ CREATE TABLE test" + i + @" (
             for (int i = 0; i < noThreads; i++)
             {
                 var indexStart = i * noTasksPerThread;
-                threads[i] = new Thread(new ThreadStart(() => RunTasks(indexStart, noTasks)));
+                threads[i] = new Thread(new ThreadStart(() => RunTasks(indexStart, noTasksPerThread)));
                 threads[i].Start();
             }
 
