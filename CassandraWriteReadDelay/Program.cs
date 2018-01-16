@@ -13,7 +13,7 @@ namespace CassandraWriteReadDelay
         #region Fields and Properties
 
         const int NO_TABLES = 5;
-        const int TOTAL_NO_TASKS = 100000;
+        const int TOTAL_NO_TASKS = 10000000;
         const int TOTAL_NO_THREADS = 20;
 
         static Random Random = new Random(123);
@@ -56,7 +56,7 @@ namespace CassandraWriteReadDelay
                 return _psSelect;
             }
         }
-        
+
         static int NoTasksExecuted = 0;
 
         #endregion
@@ -156,19 +156,13 @@ CREATE TABLE test" + i + @" (
             var exit = false;
             var thread = new Thread(new ThreadStart(() =>
             {
-                var nextPct = 1;
-
-                while(!exit)
+                while (!exit)
                 {
-                    var currPct = (int)(100.0 * NoTasksExecuted / TOTAL_NO_TASKS);
+                    var pct = 100.0 * NoTasksExecuted / TOTAL_NO_TASKS;
 
-                    if (currPct > nextPct)
-                    {
-                        WriteLine($"{currPct}% completed");
-                        nextPct = currPct;
-                    }
+                    WriteLine($"Tasks performed: {NoTasksExecuted}/{TOTAL_NO_TASKS} (pct completed: {pct})");
 
-                    Thread.Sleep(100);
+                    Thread.Sleep(1000);
                 }
             }));
 
@@ -218,13 +212,15 @@ CREATE TABLE test" + i + @" (
             // Perform select
             for (int i = 0; i < NO_TABLES; i++)
             {
-                var bs = PsSelect[i].Bind(i);
+                var pk = index + i;
+
+                var bs = PsSelect[i].Bind(pk);
                 var rowSet = await Session.ExecuteAsync(bs);
                 var row = rowSet.FirstOrDefault();
 
                 if (row == null)
                 {
-                    Console.WriteLine("Select failed for index " + index);
+                    WriteLine($"Select failed for table test{i} for pk {pk}");
                 }
             }
 
